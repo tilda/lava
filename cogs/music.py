@@ -209,8 +209,12 @@ class Music:
         if not player.is_playing:
             return await ctx.send(':x: Nothing is playing.')
         player.shuffle = not player.shuffle
-        if_enabled = 'enabled' if player.shuffle else 'disabled'
-        await ctx.send(f':white_check_mark: Shuffle {if_enabled}.')
+        def if_enabled():
+            if player.shuffle:
+                return 'enabled'
+            else:
+                return 'disabled'
+        await ctx.send(f':white_check_mark: Shuffle {if_enabled()}.')
 
     @commands.command(aliases=['loop'])
     async def repeat(self, ctx):
