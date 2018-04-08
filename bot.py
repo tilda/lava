@@ -22,8 +22,8 @@ class HahaYes(commands.AutoShardedBot):
         self.config = yaml.load(open('config.yaml').read().rstrip())
 
     async def on_ready(self):
-    	rlog.info("""
-    		                          .'  .
+      rlog.info("""
+                                  .'  .
                          .'.'.' .
                         .`.'.`'.
                        ..'..'.`'
