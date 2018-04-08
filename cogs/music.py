@@ -49,9 +49,9 @@ class Music:
 
             perms = ctx.author.voice.channel.permissions_for(ctx.me)
 
-            if not permissions.connect:
+            if not perms.connect:
                 return await ctx.send(':x: I do not have permission to join the channel.')
-            elif not permissions.speak:
+            elif not perms.speak:
                 return await ctx.send(':x: I do not have permission to speak in the channel.')
 
             player.store('channel', ctx.channel.id)
