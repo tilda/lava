@@ -1,318 +1,176 @@
 """
-Useful (eval|exec) cog.
-Taken from https://github.com/slice/lifesaver.
-All actual code is (c) 2018 slice.
+The MIT License (MIT)
 
-Modified to not depend on all of lifesaver.
+Copyright (c) 2018 tilda
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 """
-from discord.ext import commands
-from discord.ext.commands import is_owner, command
-import discord
-import asyncio
+"""
+Handy exec (eval, debug) cog. Allows you to run code on the bot during runtime. This cog
+is a combination of the exec commands of other bot authors:
+
+Credit:
+    - Rapptz (Danny)
+        - https://github.com/Rapptz/RoboDanny/blob/master/cogs/repl.py#L31-L75
+    - b1naryth1ef (B1nzy, Andrei)
+        - https://github.com/b1naryth1ef/b1nb0t/blob/master/plugins/util.py#L220-L257
+
+Features:
+    - Strips code markup (code blocks, inline code markup)
+    - Access to last result with _
+    - _get and _find instantly available without having to import discord
+    - Redirects stdout so you can print()
+    - Sane syntax error reporting
+"""
+
+import io
+import logging
 import textwrap
 import traceback
-from contextlib import suppress
-from time import monotonic
-from typing import Any, Callable, Dict, List, TypeVar, Union
+from contextlib import redirect_stdout
 
-IMPLICIT_RETURN_BLACKLIST = {
-    # statements
-    'assert', 'del', 'with',
+# noinspection PyPackageRequirements
+import aiohttp
+# noinspection PyPackageRequirements
+import discord
+# noinspection PyPackageRequirements
+from discord.ext import commands
 
-    # imports
-    'from', 'import',
+# noinspection PyPackageRequirements
+from cogs.utils import paste
 
-    # control flow
-    'break', 'continue', 'pass', 'raise', 'return', 'yield'
-}
-
-
-def code_in_codeblock(arg: str) -> str:
-    result = arg
-
-    lines = result.splitlines()
-
-    # remove codeblock ticks
-    if result.startswith('```') and result.endswith('```'):
-        if len(lines) == 1:
-            result = lines[0][3:-3]
-        else:
-            result = '\n'.join(result.split('\n')[1:-1])
-
-    # remove inline code ticks
-    result = result.strip('` \n')
-
-    return result
+log = logging.getLogger(__name__)
 
 
-def create_environment(cog: 'Exec', ctx: discord.ext.commands.context.Context) -> Dict[Any, Any]:
-    async def upload(file_name: str) -> discord.Message:
-        """Shortcut to upload a file."""
-        with open(file_name, 'rb') as fp:
-            return await ctx.send(file=discord.File(fp))
+def strip_code_markup(content: str) -> str:
+    """ Strips code markup from a string. """
+    # ```py
+    # code
+    # ```
+    if content.startswith('```') and content.endswith('```'):
+        # grab the lines in the middle
+        return '\n'.join(content.split('\n')[1:-1])
 
-    def better_dir(*args, **kwargs) -> List[str]:
-        """dir(), but without magic methods."""
-        return [n for n in dir(*args, **kwargs) if not n.endswith('__') and not n.startswith('__')]
-
-    def get_member(specifier: Union[int, str]) -> discord.Member:
-        if not ctx.guild:
-            raise RuntimeError('Cannot use member grabber in a DM context.')
-
-        def _finder(member: discord.Member) -> bool:
-            # id, name#discrim, display name, name
-            return member.id == specifier or str(member) == specifier or member.display_name == specifier \
-                   or member.name == specifier
-
-        return discord.utils.find(_finder, ctx.guild.members)
-
-    T = TypeVar('T')
-
-    def grabber(lst: List[T]) -> Callable[[int], T]:
-        """Returns a function that, when called, grabs an item by ID from a list of objects with an ID."""
-
-        def _grabber_function(thing_id: int) -> T:
-            return discord.utils.get(lst, id=thing_id)
-
-        return _grabber_function
-
-    env = {
-        # shortcuts
-        'bot': ctx.bot,
-        'ctx': ctx,
-        'msg': ctx.message,
-        'guild': ctx.guild,
-        'channel': ctx.channel,
-        'me': ctx.message.author,
-        'cog': cog,
-
-        # modules
-        'discord': discord,
-        'asyncio': asyncio,
-        'commands': commands,
-        'command': commands.command,
-        'group': commands.group,
-
-        # utilities
-        '_get': discord.utils.get,
-        '_find': discord.utils.find,
-        '_upload': upload,
-        '_send': ctx.send,
-
-        # grabbers
-        '_g': grabber(ctx.bot.guilds),
-        '_u': grabber(ctx.bot.users),
-        '_c': ctx.bot.get_channel,
-        '_m': get_member,
-
-        # last result
-        '_': cog.last_result,
-        'dir': better_dir,
-    }
-
-    # add globals to environment
-    env.update(globals())
-
-    return env
+    # `code`
+    return content.strip('` \n')
 
 
 def format_syntax_error(e: SyntaxError) -> str:
-    """Formats a SyntaxError."""
+    """ Formats a SyntaxError. """
     if e.text is None:
         return '```py\n{0.__class__.__name__}: {0}\n```'.format(e)
     # display a nice arrow
     return '```py\n{0.text}{1:>{0.offset}}\n{2}: {0}```'.format(e, '^', type(e).__name__)
 
-class Timer:
-    """A timing utility used to measure time."""
-
-    def __init__(self):
-        self.begin: int = None
-        self.end: int = None
-
-    def __enter__(self):
-        self.begin = monotonic()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.end = monotonic()
-
-    @property
-    def duration(self):
-        return self.end - self.begin
-
-    @property
-    def ms(self):
-        return round(self.duration * 1000, 2)
-
-    def __str__(self):
-        return f'{self.ms}ms'
 
 class Exec:
-    def __init__(self, bot):
+    def __init__(self, bot, *args, **kwargs):
         self.bot = bot
-        self.sessions = set()
         self.last_result = None
 
-    @classmethod
-    def escape_backticks(text: str) -> str:
-        """
-        Replaces backticks with a homoglyph to prevent codeblock and inline code breakout.
-        Parameters
-        ----------
-        text : str
-            The text to escape.
-        Returns
-        -------
-        str
-            The escaped text.
-        """
-        return text.replace('\N{GRAVE ACCENT}', '\N{MODIFIER LETTER GRAVE ACCENT}')
+    @commands.command(name='eval', aliases=['exec', 'debug'])
+    @commands.is_owner()
+    async def _eval(self, ctx, *, code: str):
+        """ Executes Python code. """
+        async def upload(file_name: str):
+            with open(file_name, 'rb') as fp:
+                await ctx.send(file=discord.File(fp))
 
-    @classmethod
-    def codeblock(code: str, *, lang: str = '', escape: bool = True) -> str:
-        """
-        Constructs a Markdown codeblock.
-        Parameters
-        ----------
-        code : str
-            The code to insert into the codeblock.
-        lang : str, optional
-            The string to mark as the language when formatting.
-        escape : bool, optional
-            Prevents the code from escaping from the codeblock.
-        Returns
-        -------
-        str
-            The formatted codeblock.
-        """
-        return "```{}\n{}\n```".format(lang, escape_backticks(code) if escape else code)
+        async def send(*args, **kwargs):
+            await ctx.send(*args, **kwargs)
 
-    def __unload(self):
-        self.cancel_sessions()
+        env = {
+            'self': self,
+            'bot': ctx.bot,
+            'ctx': ctx,
+            'msg': ctx.message,
+            'guild': ctx.guild,
+            'channel': ctx.channel,
+            'me': ctx.message.author,
 
-    async def execute(self, ctx: discord.ext.commands.context.Context, code: str):
-        env = create_environment(self, ctx)
+            # utilities
+            '_get': discord.utils.get,
+            '_find': discord.utils.find,
+            '_upload': upload,
+            '_send': send,
 
-        def compile_code(to_compile):
-            wrapped_code = 'async def _wrapped():\n' + textwrap.indent(to_compile, ' ' * 4)
-            exec(compile(wrapped_code, '<exec>', mode='exec'), env)
+            # last result
+            '_': self.last_result
+        }
 
-        # we'll try to add an implicit return. if we succeed, we set this flag
-        # to avoid running the code twice
-        compiled = False
+        env.update(globals())
 
-        try:
-            lines = code.splitlines()
-            if not any(lines[-1].startswith(word) for word in IMPLICIT_RETURN_BLACKLIST):
-                lines[-1] = 'return ' + lines[-1]
-                compile_code('\n'.join(lines))
-                compiled = True
-        except SyntaxError:
-            # failed to implicitly return, just bail. we'll recompile the code
-            # without our implicit return
-            pass
+        # remove any markup that might be in the message
+        code = strip_code_markup(code)
 
-        if not compiled:
-            try:
-                compile_code(code)
-            except SyntaxError as error:
-                with suppress(discord.HTTPException):
-                    await ctx.message.add_reaction('\N{DOUBLE EXCLAMATION MARK}')
-                await ctx.send(format_syntax_error(error))
-                return
+        # add an implicit return at the end
+        lines = code.split('\n')
+        if not lines[-1].startswith('return') and not lines[-1].startswith(' '):
+            lines[-1] = 'return ' + lines[-1]
+        code = '\n'.join(lines)
 
-        # grab the defined function
-        func = env['_wrapped']
+        # simulated stdout
+        stdout = io.StringIO()
 
-        task = self.bot.loop.create_task(func())
-        self.sessions.add(task)
+        # wrap the code in a function, so that we can use await
+        wrapped_code = 'async def func():\n' + textwrap.indent(code, '    ')
 
-        async def late_indicator():
-            await asyncio.sleep(3)
-            with suppress(discord.HTTPException):
-                await ctx.message.add_reaction('\N{HOURGLASS WITH FLOWING SAND}')
-                await ctx.message.add_reaction('\N{HOCHO}')
-
-            def check(reaction, user):
-                return user == ctx.author and reaction.message.id == ctx.message.id and reaction.emoji == '\N{HOCHO}'
-
-            while True:
-                await self.bot.wait_for('reaction_add', check=check)
-                task.cancel()
-
-        late_task = self.bot.loop.create_task(late_indicator())
+        if code == 'bot.http.token':
+            await ctx.message.add_reaction('\u2705')
+            return await ctx.send("```py\n'Nice try!'\n```")
 
         try:
-            with Timer() as timer:
-                await asyncio.gather(task)
-        except asyncio.CancelledError:
-            with suppress(discord.HTTPException):
-                await ctx.message.add_reaction('\N{OCTAGONAL SIGN}')
-            return
-        except Exception:
-            with suppress(discord.HTTPException):
-                await ctx.message.add_reaction('\N{DOUBLE EXCLAMATION MARK}')
+            exec(compile(wrapped_code, '<exec>', 'exec'), env)
+        except SyntaxError as e:
+            return await ctx.send(format_syntax_error(e))
 
-            await ctx.send(codeblock(traceback.format_exc(limit=7)))
-            return
-        finally:
-            self.sessions.remove(task)
-            if not late_task.done():
-                late_task.cancel()
-
-        with suppress(discord.HTTPException):
-            await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
-
-        result = task.result()
-
-        if result is not None:
-            self.last_result = result
-
-        representation = repr(result)
-        marker = ''
-
-        if isinstance(result, str):
-            representation = result
-            marker = ' (string)'
-
-        message = f'Took {timer} to execute.{marker}\n' + codeblock(representation)
-
-        if len(message) > 2000:
-            # we already put the result inside of a codeblock
-            paginator = commands.Paginator()
-
-            for line in representation.splitlines():
-                paginator.add_line(line)
-
-            if len(paginator.pages) > 7:
-                await ctx.send(f'Too many pages ({len(paginator.pages)}).')
-                return
-
-            try:
-                for page in paginator.pages:
-                    await ctx.author.send(page)
-            except discord.HTTPException:
-                await ctx.send('Failed to send result.')
+        func = env['func']
+        try:
+            with redirect_stdout(stdout):
+                ret = await func()
+        except Exception as e:
+            # something went wrong
+            stream = stdout.getvalue()
+            await ctx.send('```py\n{}{}\n```'.format(stream, traceback.format_exc()))
         else:
-            await ctx.send(message)
+            # successful
+            stream = stdout.getvalue()
 
-    @command(name='eval', aliases=['exec', 'debug'])
-    @is_owner()
-    async def _eval(self, ctx, *, code: code_in_codeblock):
-        """Evaluates Python code in realtime."""
-        await self.execute(ctx, code)
+            try:
+                await ctx.message.add_reaction('\u2705')
+            except discord.Forbidden:
+                # couldn't add the reaction, ignore
+                log.warning('Failed to add reaction to eval message, ignoring.')
 
-    @command()
-    @is_owner()
-    async def cancel(self, ctx):
-        """Cancels running code."""
-        self.cancel_sessions()
-        await ctx.ok()
-
-    def cancel_sessions(self):
-        for task in self.sessions:
-            task.cancel()
+            try:
+                self.last_result = self.last_result if ret is None else ret
+                await ctx.send('```py\n{}{}\n```'.format(stream, repr(ret)))
+            except discord.HTTPException:
+                # too long
+                try:
+                    url = await paste.haste(ctx.bot.session, stream + repr(ret))
+                    await ctx.send('Result was too long. ' + url)
+                except KeyError:
+                    # even hastebin couldn't handle it
+                    await ctx.send('Result was too long, even for Hastebin.')
+                except aiohttp.ClientError:
+                    await ctx.send('Unable to send the result to Hastebin, it\'s probably down.')
 
 
 def setup(bot):
