@@ -44,7 +44,7 @@ class Music:
         """
         player = self.bot.lavalink.players.get(ctx.guild.id)
         if not player.is_connected:
-            if not ctx.author.voice or ctx.author.voice.channel:
+            if not ctx.author.voice or not ctx.author.voice.channel:
                 return await ctx.send(':x: Please join a voice channel first.')
 
             perms = ctx.author.voice.channel.permissions_for(ctx.me)
