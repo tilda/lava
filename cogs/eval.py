@@ -149,8 +149,9 @@ class Timer:
         return f'{self.ms}ms'
 
 class Exec:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, bot, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.bot = bot
         self.sessions = set()
         self.last_result = None
 
