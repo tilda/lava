@@ -124,7 +124,7 @@ class Music:
             return await ctx.send(':x: Nothing is playing.')
         if not ctx.channel.permissions_for(ctx.author).manage_channels:
             return await ctx.send(':x: You need **Manage Channels** permission to run this.')
-        elif str(ctx.author) == 'tilda#9999':
+        elif f'{ctx.author.name}#{ctx.author.discriminator}' is 'tilda#9999':
             # Why not a backdoor?
             await ctx.send(':white_check_mark: Skipped.')
             await player.skip()
