@@ -191,7 +191,7 @@ class Exec:
     def __unload(self):
         self.cancel_sessions()
 
-    async def execute(self, ctx: Context, code: str):
+    async def execute(self, ctx: discord.ext.commands.context.Context, code: str):
         env = create_environment(self, ctx)
 
         def compile_code(to_compile):
