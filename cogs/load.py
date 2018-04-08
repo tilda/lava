@@ -12,7 +12,22 @@ class LoadExts:
         self.bot = bot
 
     @classmethod
-    def codeblock(code: str, *, lang: str = '', escape: bool = True) -> str:
+    def escape_backticks(self, text: str) -> str:
+        """
+        Replaces backticks with a homoglyph to prevent codeblock and inline code breakout.
+        Parameters
+        ----------
+        text : str
+            The text to escape.
+        Returns
+        -------
+        str
+            The escaped text.
+        """
+        return text.replace('\N{GRAVE ACCENT}', '\N{MODIFIER LETTER GRAVE ACCENT}')
+
+    @classmethod
+    def codeblock(self, code: str, *, lang: str = '', escape: bool = True) -> str:
         """
         Constructs a Markdown codeblock.
         Parameters
@@ -28,7 +43,7 @@ class LoadExts:
         str
             The formatted codeblock.
         """
-        return "```{}\n{}\n```".format(lang, escape_backticks(code) if escape else code)
+        return "```{}\n{}\n```".format(lang, self.escape_backticks(code) if escape else code)
 
     @commands.command()
     @commands.is_owner()
@@ -40,7 +55,7 @@ class LoadExts:
             except ModuleNotFoundError:
                 return await ctx.send(':x: Cog not found.')
             except Exception:
-                return await ctx.send(codeblock(traceback.format_exc()))
+                return await ctx.send(self.codeblock(traceback.format_exc()))
             else:
                 await ctx.send(f':white_check_mark: Cog `{ext}` loaded.')
 
