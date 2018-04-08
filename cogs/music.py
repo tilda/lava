@@ -91,7 +91,7 @@ class Music:
             await ctx.send(embed=e)
             player.add(requester=ctx.author.id, track=track)
 
-        if not player.is_playing():
+        if not player.is_playing:
             await player.play()
 
     @commands.command()
