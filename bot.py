@@ -49,6 +49,19 @@ class HahaYes(commands.AutoShardedBot):
 bot = HahaYes(command_prefix=commands.when_mentioned_or(config['prefix']),
               description='A simple music bot.',
               pm_help=None)
+
+if __name__ == '__main__':
+    try:
+        rlog.info('Attempting to load music')
+        bot.load_extension('cogs.music')
+    except Exception:
+        rlog.error('OOPSIE WOOPSIE!! Uwu We made a fucky wucky!!')
+        rlog.error(' A wittle fucko boingo! The code monkeys at our') 
+        rlog.error(' headquarters are working VEWY HAWD to fix this!')
+        rlog.error(' ', exc_info=True)
+    else:
+        rlog.info('Well, we did it.')
+
 try:
     bot.run(config['token'])
 except discord.LoginFailure:
