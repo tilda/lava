@@ -150,6 +150,7 @@ class Timer:
 
 class Exec:
     def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
         self.bot = bot
         self.sessions = set()
         self.last_result = None
