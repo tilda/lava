@@ -54,6 +54,8 @@ if __name__ == '__main__':
     try:
         rlog.info('Attempting to load music')
         bot.load_extension('cogs.music')
+        rlog.info('Attempting to load reloader')
+        bot.load_extension('cogs.load')
     except Exception:
         rlog.error('OOPSIE WOOPSIE!! Uwu We made a fucky wucky!!')
         rlog.error(' A wittle fucko boingo! The code monkeys at our') 
