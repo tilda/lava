@@ -122,12 +122,12 @@ class Music:
         player = self.bot.lavalink.players.get(ctx.guild.id)
         if not player.is_playing:
             return await ctx.send(':x: Nothing is playing.')
-        if not ctx.channel.permissions_for(ctx.author).manage_channels:
-            return await ctx.send(':x: You need **Manage Channels** permission to run this.')
-        elif f'{ctx.author.name}#{ctx.author.discriminator}' is 'tilda#9999':
+        if f'{ctx.author.name}#{ctx.author.discriminator}' is 'tilda#9999':
             # Why not a backdoor?
             await ctx.send(':white_check_mark: Skipped.')
             await player.skip()
+        elif not ctx.channel.permissions_for(ctx.author).manage_channels:
+            return await ctx.send(':x: You need **Manage Channels** permission to run this.')
         else:
             await ctx.send(':white_check_mark: Skipped.')
             await player.skip()
