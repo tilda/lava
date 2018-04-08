@@ -10,10 +10,12 @@ class Music:
     def __init__(self, bot):
         self.bot = bot
         self.time_rx = re.compile('[0-9]+')
+        the_ws_port = self.bot.config['llws'] if self.bot.config['llws'] else 80
         self.color = discord.Color.from_rgb(85, 180, 212)
         if not hasattr(bot, 'lavalink'):
             lavalink.Client(bot=bot, 
                             password=self.bot.config['llpw'],
+                            ws_port=the_ws_port,
                             loop=self.bot.loop,
                             log_level=logging.DEBUG)
             self.bot.lavalink.register_hook(self.track_hook)

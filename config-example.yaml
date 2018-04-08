@@ -5,3 +5,7 @@ token: ""
 prefix: "lava, "
 # Lavalink password
 llpw: ""
+# Lavalink websockets port
+# For this part, replace the string with the Lavalink WebSocket port you configured.
+# So, `llws: ""` would become `llws: 2222` if the port was 2222.
+llws: ""
