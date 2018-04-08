@@ -30,6 +30,7 @@ class Music:
                                        description=f'`{event.track.title}`',
                                        colour=self.color)
                     em.set_thumbnail(url=event.track.thumbnail)
+                    await c.send(embed=em)
         elif isinstance(event, lavalink.Events.QueueEndEvent):
             c = event.player.fetch('channel')
             if c:
