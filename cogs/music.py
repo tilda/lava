@@ -151,7 +151,7 @@ class Music:
                 dur = lavalink.Utils.format_time(player.current.duration)
             song = f'[{player.current.title}]({player.current.uri})'
             song += f' | {pos}:{dur}'
-            em = await discord.Embed(color=self.color,
+            em = discord.Embed(color=self.color,
                                      title='Playing',
                                      description=song)
             em.set_thumbnail(url=player.current.thumbnail)
