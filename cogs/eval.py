@@ -155,23 +155,38 @@ class Exec:
         self.last_result = None
 
     @classmethod
+    def escape_backticks(text: str) -> str:
+        """
+        Replaces backticks with a homoglyph to prevent codeblock and inline code breakout.
+        Parameters
+        ----------
+        text : str
+            The text to escape.
+        Returns
+        -------
+        str
+            The escaped text.
+        """
+        return text.replace('\N{GRAVE ACCENT}', '\N{MODIFIER LETTER GRAVE ACCENT}')
+
+    @classmethod
     def codeblock(code: str, *, lang: str = '', escape: bool = True) -> str:
-    """
-    Constructs a Markdown codeblock.
-    Parameters
-    ----------
-    code : str
-        The code to insert into the codeblock.
-    lang : str, optional
-        The string to mark as the language when formatting.
-    escape : bool, optional
-        Prevents the code from escaping from the codeblock.
-    Returns
-    -------
-    str
-        The formatted codeblock.
-    """
-    return "```{}\n{}\n```".format(lang, escape_backticks(code) if escape else code)
+        """
+        Constructs a Markdown codeblock.
+        Parameters
+        ----------
+        code : str
+            The code to insert into the codeblock.
+        lang : str, optional
+            The string to mark as the language when formatting.
+        escape : bool, optional
+            Prevents the code from escaping from the codeblock.
+        Returns
+        -------
+        str
+            The formatted codeblock.
+        """
+        return "```{}\n{}\n```".format(lang, escape_backticks(code) if escape else code)
 
     def __unload(self):
         self.cancel_sessions()
