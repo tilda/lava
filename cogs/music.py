@@ -218,8 +218,12 @@ class Music:
         if not player.is_playing:
             return await ctx.send(':x: Nothing is playing.')
         player.repeat = not player.repeat
-        if_enabled = 'Now repeating.' if player.repeat else 'Disabled repeating.'
-        await ctx.send(f':white_check_mark: {is_enabled}')
+        def if_enabled():
+            if player.repeat:
+                return 'Repeat enabled.'
+            else:
+                return 'Repeat disabled.'
+        await ctx.send(f':white_check_mark: {if_enabled()}')
 
     @commands.command()
     async def find(self, ctx, *, query):
